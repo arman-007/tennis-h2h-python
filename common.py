@@ -17,13 +17,29 @@ def run_actor(run_input: dict) -> list[dict]:
     if not token:
         sys.exit("Set APIFY_TOKEN first: https://console.apify.com/settings/integrations")
     client = ApifyClient(token)
-    run = client.actor(ACTOR).call(run_input=run_input)
+    run = client.actor(ACTOR).call(run_input=run_input, logger=None)  # None: don't stream the run's log
     if run is None:
         sys.exit("The run did not start.")
-    rows = list(client.dataset(run["defaultDatasetId"]).iterate_items())
-    cost = run.get("usageTotalUsd") or 0
-    print(f"Run {run['status']}: {len(rows)} rows, about ${cost:.3f}")
+    rows = list(client.dataset(run.default_dataset_id).iterate_items())
+    print(f"Run {run.status}: {len(rows)} rows, cost ${run_cost(run, rows):.3f}")
     return rows
+
+
+def run_cost(run, rows: list[dict]) -> float:
+    """What the run charged you: the Actor's per-event prices times what came back.
+
+    The Actor is priced per event: a start fee, each match row, and each
+    statistics or odds add-on that came back filled in. The prices travel with
+    the run in `pricing_info`. (`run.usage_total_usd` is the platform usage,
+    which the Actor's developer pays, so it is not your bill.)
+    """
+    events = run.pricing_info.pricing_per_event.actor_charge_events
+    price = {name: event.event_price_usd or 0 for name, event in events.items()}
+    matches = [r for r in rows if r.get("rowType") == "match"]
+    cost = price.get("apify-actor-start", 0) + len(matches) * price["match"]
+    for detail, event in (("statistics", "match-statistics"), ("odds", "match-odds")):
+        cost += sum(price[event] for r in matches if r.get(detail) is not None)
+    return cost
 
 
 def matches_frame(rows: list[dict]) -> pd.DataFrame:

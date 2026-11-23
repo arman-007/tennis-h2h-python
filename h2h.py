@@ -29,7 +29,8 @@ def main(matchup: str) -> None:
 
     frame = matches_frame(rows)
     meetings = frame[frame["source"] == "matchup"]
-    print(meetings.tail(5)[["date", "tournament", "round", "surface", "won", "score"]].to_string(index=False))
+    last = meetings.tail(5).assign(date=lambda d: d["date"].dt.date)
+    print(last[["date", "tournament", "round", "surface", "won", "score", "result_type"]].to_string(index=False))
     meetings.to_csv("h2h.csv", index=False)
     print("\nSaved every meeting to h2h.csv")
 
